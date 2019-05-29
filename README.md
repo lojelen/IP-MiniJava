@@ -1,1 +1,1 @@
-# IP---MiniJava
+# IP-MiniJava
