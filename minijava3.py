@@ -236,7 +236,7 @@ class MiniJavaParser(Parser):
             else: raise self.greška()
         else:
             if self >> MJ.UOTV:
-                indeks = self.izraz()
+                indeks = self.izraz(parent)
                 self.pročitaj(MJ.UZATV)
             else: indeks = False
             self.pročitaj(MJ.JEDNAKO)
@@ -298,11 +298,12 @@ class MiniJavaParser(Parser):
                 return self.pozivmetode(objekt, parent)
             else: return objekt
         elif self >> MJ.NEW:
-            objekt =  self.konstruktor()
+            objekt =  self.konstruktor(parent)
             if self >> MJ.TOČKA:
                 if self >> MJ.LENGTH: return Length(objekt)
                 else:
                     return self.pozivmetode(objekt, parent)
+            else: return objekt
         objekt = self.pročitaj(MJ.IME) # ne moramo raiseati grešku
         if self >> MJ.UOTV:
             izraz = self.izraz(parent)
@@ -328,10 +329,10 @@ class MiniJavaParser(Parser):
         self.pročitaj(MJ.OZATV)
         return MethodCallExpression(objekt, metoda, argumenti)
 
-    def konstruktor(self):
+    def konstruktor(self, parent):
         if self >> MJ.INT:
             self.pročitaj(MJ.UOTV)
-            veličina = self.izraz()
+            veličina = self.izraz(parent)
             self.pročitaj(MJ.UZATV)
             return ConstructorExpression(veličina, False) # False = int
         ime = self.pročitaj(MJ.IME)
@@ -424,7 +425,7 @@ class ConstructorExpression(AST('veličina ime')):
 
 class Indeksiranje(AST('varijabla veličina')):
     def vrijednost(self, mem, symtab, lokalni):
-        return pogledaj(lokalni, self.varijabla.sadržaj)[self.veličina.vrijednost(mem, symtab, lokalni)]
+        return pogledaj(lokalni, self.varijabla)[str(self.veličina.vrijednost(mem, symtab, lokalni))]
 #       u memoriji moraju biti pohranjene vrijednosti varijabli
 
     def provjeri_tip(self, mem, symtab, lokalni):
@@ -432,7 +433,7 @@ class Indeksiranje(AST('varijabla veličina')):
 
 class Length(AST('varijabla')):
     def vrijednost(self, mem, symtab, lokalni):
-        return pogledaj(symtab, self.varijabla.sadržaj)[1]
+        return pogledaj(symtab, self.varijabla)[1]
 
     def provjeri_tip(self, mem, symtab, lokalni):
         return MJ.INT
@@ -477,7 +478,7 @@ class Pridruživanje(AST('varijabla indeks izraz')):
         if self.indeks:
             if not self.izraz.provjeri_tip(mem, symtab, lokalni) == MJ.INT:
                 Token(self.izraz.provjeri_tip(mem, symtab, lokalni), '').krivi_tip(self.izraz.provjeri_tip(mem, symtab, lokalni), MJ.INT)
-            lokalni[self.varijabla.sadržaj][self.indeks.sadržaj] = self.izraz.vrijednost()
+            lokalni[self.varijabla.sadržaj][self.indeks.sadržaj] = self.izraz.vrijednost(mem, symtab, lokalni)
         else:
             if not pogledaj(symtab, self.varijabla)[0] == self.izraz.provjeri_tip(mem, symtab, lokalni):
                 Token(pogledaj(symtab, self.varijabla)[0],
@@ -656,7 +657,26 @@ class Dijete (extends Roditelj){
 }
 '''
 
-tokeni = list(minijava_lexer(program_nasljeđivanje))
+program4 = '''
+class Main{
+    public static void main(String[] a){
+        System.out.println(new Klasa().Metoda(15));
+    }
+}
+
+class Klasa{
+    int[] a;
+    public int Metoda(int x){
+        a = new int[2];
+        a[0] = 1;
+        a[1] = x;
+        System.out.println(a.length);
+        return a[1];
+    }
+}
+'''
+
+tokeni = list(minijava_lexer(program4))
 #print(*tokeni)
 
 ast = MiniJavaParser.parsiraj(tokeni)
