@@ -14,7 +14,7 @@ class MJ(enum.Enum):
         def provjeri_tip(self, symtab): return MJ.INT
 
     class IME(Token):
-        def vrijednost(self, mem, symtab, lokalni): return pogledaj(mem, self)
+        def vrijednost(self, mem, symtab, lokalni): return pogledaj(lokalni, self)
         def provjeri_tip(self, symtab): return pogledaj(symtab, self)[0]
 
     class LKONST(Token):
@@ -425,9 +425,9 @@ class Length(AST('varijabla')):
 class VarDeclaration(AST('tip ime')):
     def dekl(self, mem, symtab, lokalni):
         if self.tip ^ MJ.IME:
-            symtab[self.ime.vrijednost] = [self.tip.sadržaj, 1]
+            symtab[self.ime.sadržaj] = [self.tip.sadržaj, 1]
         else:
-            symtab[self.ime.vrijednost] = [self.tip.tip, 1]
+            symtab[self.ime.sadržaj] = [self.tip.tip, 1]
         return self.ime
 
 # deklaracija metode
@@ -464,9 +464,9 @@ class Pridruživanje(AST('varijabla indeks izraz')):
                 Token(self.izraz.provjeri_tip(mem, symtab, lokalni), '').krivi_tip(self.izraz.provjeri_tip(mem, symtab, lokalni), MJ.INT)
             lokalni[self.varijabla.sadržaj][self.indeks.sadržaj] = self.izraz.vrijednost()
         else:
-            if not self.pogledaj(symtab, varijabla.sadržaj)[0] == self.izraz.provjeri_tip(mem, symtab, lokalni):
-                Token(self.pogledaj(symtab, varijabla.sadržaj)[0],
-                      '').krivi_tip(self.pogledaj(symtab, varijabla.sadržaj)[0], self.izraz.provjeri_tip(mem, symtab, lokalni)) 
+            if not pogledaj(symtab, self.varijabla)[0] == self.izraz.provjeri_tip(mem, symtab, lokalni):
+                Token(pogledaj(symtab, self.varijabla)[0],
+                      '').krivi_tip(pogledaj(symtab, self.varijabla)[0], self.izraz.provjeri_tip(mem, symtab, lokalni)) 
             lokalni[self.varijabla.sadržaj] = self.izraz.vrijednost(mem, symtab, lokalni)
             if lokalni[self.varijabla.sadržaj] == {}:
                 symtab[self.varijabla.sadržaj][1] = self.izraz.veličina.sadržaj
