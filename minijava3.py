@@ -25,6 +25,17 @@ def minijava_lexer(program):
     lex = Tokenizer(program)
     for znak in iter(lex.čitaj, ''):
         if znak.isspace(): lex.zanemari()
+        elif znak == '/':
+            if lex.slijedi('/'):
+                lex.pročitaj_do('\n')
+                lex.zanemari()
+            else:
+                lex.pročitaj('*')
+                while(1):
+                    lex.pročitaj_do('*')
+                    if lex.slijedi('/'):
+                        lex.zanemari()
+                        break
         elif znak.isalpha():
             lex.zvijezda(identifikator)
             if lex.sadržaj in {'true', 'false'}: yield lex.token(MJ.LKONST)
@@ -567,7 +578,30 @@ class Fac {
 }
 '''
 
-tokeni = list(minijava_lexer(program))
+program_komentari = '''
+class Factorial{
+    public static void main(String[] a){
+        System.out.println(new Fac().ComputeFac(10));
+    }
+}
+
+// sada slijedi klasa Fac
+class Fac {
+    public int ComputeFac(int num){ // metoda unutar klase Fac
+        int num_aux ;
+        if (num < 1)
+            num_aux = 1 ; /* ovdje pridružujemo jedinicu num_aux
+        završio je if dio
+        // sada slijedi else
+        u njemu ćemo množiti: num * nešto */
+        else
+            num_aux = num * (this.ComputeFac(num-1));
+        return num_aux ;
+    }
+}
+'''
+
+tokeni = list(minijava_lexer(program_komentari))
 #print(*tokeni)
 
 ast = MiniJavaParser.parsiraj(tokeni)
