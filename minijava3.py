@@ -11,15 +11,15 @@ class MJ(enum.Enum):
 
     class BROJ(Token):
         def vrijednost(self, mem, symtab, lokalni): return int(self.sadržaj)
-        def provjeri_tip(self, symtab): return MJ.INT
+        def provjeri_tip(self, mem, symtab, lokalni): return MJ.INT
 
     class IME(Token):
         def vrijednost(self, mem, symtab, lokalni): return pogledaj(lokalni, self)
-        def provjeri_tip(self, symtab): return pogledaj(symtab, self)[0]
+        def provjeri_tip(self, mem, symtab, lokalni): return pogledaj(symtab, self)[0]
 
     class LKONST(Token):
         def vrijednost(self, mem, symtab, lokalni): return self.sadržaj == 'true'
-        def provjeri_tip(self, symtab): return MJ.BOOLEAN
+        def provjeri_tip(self, mem, symtab, lokalni): return MJ.BOOLEAN
 
 def minijava_lexer(program):
     lex = Tokenizer(program)
@@ -112,7 +112,7 @@ class MiniJavaParser(Parser):
         self.pročitaj(MJ.VOTV)
         naredbe = []
         while not self >> MJ.VZATV:
-            naredbe.append(self.naredba())
+            naredbe.append(self.naredba(ime))
         self.pročitaj(MJ.VZATV)
         return MainClass(ime, arg, naredbe)
 
@@ -134,7 +134,7 @@ class MiniJavaParser(Parser):
         else: return ClassDeclaration(ime, extends, vardeklaracije, False)
         metdeklaracije = []
         while not self >> MJ.VZATV:
-            metdeklaracije.append(self.methoddeclaration())
+            metdeklaracije.append(self.methoddeclaration(ime))
         return ClassDeclaration(ime, extends, vardeklaracije, metdeklaracije)
 
     def vardeclaration(self):
@@ -143,7 +143,7 @@ class MiniJavaParser(Parser):
         self.pročitaj(MJ.TOČKAZ)
         return VarDeclaration(tip, ime)
 
-    def methoddeclaration(self):
+    def methoddeclaration(self, parent):
         self.pročitaj(MJ.PUBLIC)
         returntip = self.tip()
         ime = self.pročitaj(MJ.IME)
@@ -168,8 +168,8 @@ class MiniJavaParser(Parser):
             vardeklaracije.append(self.vardeclaration())
         naredbe = []
         while not self >> MJ.RETURN:
-            naredbe.append(self.naredba())
-        returns = self.izraz()
+            naredbe.append(self.naredba(parent))
+        returns = self.izraz(parent)
         self.pročitaj(MJ.TOČKAZ)
         self.pročitaj(MJ.VZATV)
         return MethodDeclaration(returntip, ime, parametri, vardeklaracije, naredbe, returns)
@@ -197,17 +197,17 @@ class MiniJavaParser(Parser):
         self.pročitaj(MJ.IME)
         return self.zadnji
     
-    def naredba(self):
+    def naredba(self, parent):
         if self >> MJ.VOTV:
             if self >> MJ.VZATV: return Blok([])
-            naredbe = [self.naredba()]
+            naredbe = [self.naredba(parent)]
             while not self >> MJ.VZATV:
-                naredbe.append(self.naredba())
+                naredbe.append(self.naredba(parent))
             return Blok(naredbe)
         elif self >> MJ.IF:
-            return self.ako()
+            return self.ako(parent)
         elif self >> MJ.WHILE:
-            return self.dok()
+            return self.dok(parent)
         ime = self.pročitaj(MJ.IME)
         if ime.sadržaj == 'System':
             if self >> MJ.TOČKA:
@@ -219,7 +219,7 @@ class MiniJavaParser(Parser):
                 if println.sadržaj != 'println':
                     raise self.greška()
                 self.pročitaj(MJ.OOTV)
-                izraz = self.izraz()
+                izraz = self.izraz(parent)
                 self.pročitaj(MJ.OZATV)
                 self.pročitaj(MJ.TOČKAZ)
                 return PrintStatement(izraz)
@@ -230,54 +230,54 @@ class MiniJavaParser(Parser):
                 self.pročitaj(MJ.UZATV)
             else: indeks = False
             self.pročitaj(MJ.JEDNAKO)
-            izraz = self.izraz()
+            izraz = self.izraz(parent)
             self.pročitaj(MJ.TOČKAZ)
             return Pridruživanje(ime, indeks, izraz)
 
-    def ako(self):
+    def ako(self, parent):
         self.pročitaj(MJ.OOTV)
-        uvjet = self.izraz()
+        uvjet = self.izraz(parent)
         self.pročitaj(MJ.OZATV)
-        naredba = self.naredba()
+        naredba = self.naredba(parent)
         self.pročitaj(MJ.ELSE)
-        inače = self.naredba()
+        inače = self.naredba(parent)
         return Ako(uvjet, naredba, inače)
 
-    def dok(self):
+    def dok(self, parent):
         self.pročitaj(MJ.OOTV)
-        uvjet = self.izraz()
+        uvjet = self.izraz(parent)
         self.pročitaj(MJ.OZATV)
-        naredba = self.naredba()
+        naredba = self.naredba(parent)
         return Dok(uvjet, naredba)
 
-    def izraz(self):
-        konjukti = [self.konjukt()]
-        while self >> MJ.AND: konjukti.append(self.konjukt())
+    def izraz(self, parent):
+        konjukti = [self.konjukt(parent)]
+        while self >> MJ.AND: konjukti.append(self.konjukt(parent))
         return konjukti[0] if len(konjukti) == 1 else Konjukcija(konjukti)
 
-    def konjukt(self):
-        uspoređeni = [self.uspoređen()]
-        while self >> MJ.MANJE: uspoređeni.append(self.uspoređen())
+    def konjukt(self, parent):
+        uspoređeni = [self.uspoređen(parent)]
+        while self >> MJ.MANJE: uspoređeni.append(self.uspoređen(parent))
         return uspoređeni[0] if len(uspoređeni) == 1 else Usporedba(uspoređeni)
 
-    def uspoređen(self):
-        članovi = [self.član()]
+    def uspoređen(self, parent):
+        članovi = [self.član(parent)]
         while self >> {MJ.PLUS, MJ.MINUS}:
             operator = self.zadnji
-            dalje = self.član()
+            dalje = self.član(parent)
             članovi.append(dalje if operator ^ MJ.PLUS else Suprotan(dalje))
         return članovi[0] if len(članovi) == 1 else Zbroj(članovi)
 
-    def član(self):
-        faktori = [self.faktor()]
-        while self >> MJ.PUTA: faktori.append(self.faktor())
+    def član(self, parent):
+        faktori = [self.faktor(parent)]
+        while self >> MJ.PUTA: faktori.append(self.faktor(parent))
         return faktori[0] if len(faktori) == 1 else Umnožak(faktori)
 
-    def faktor(self):
+    def faktor(self, parent):
         if self >> MJ.MINUS: return Suprotan(self.faktor())
         elif self >> MJ.NEG: return Negacija(self.faktor())
         elif self >> MJ.OOTV:
-            u_zagradi = self.izraz()
+            u_zagradi = self.izraz(parent)
             self.pročitaj(MJ.OZATV)
             return u_zagradi
         elif self >> MJ.BROJ: return self.zadnji
@@ -285,17 +285,17 @@ class MiniJavaParser(Parser):
         elif self >> MJ.THIS:
             objekt = self.zadnji
             if self >> MJ.TOČKA:
-                return self.pozivmetode(objekt)
+                return self.pozivmetode(objekt, parent)
             else: return objekt
         elif self >> MJ.NEW:
             objekt =  self.konstruktor()
             if self >> MJ.TOČKA:
                 if self >> MJ.LENGTH: return Length(objekt)
                 else:
-                    return self.pozivmetode(objekt)
+                    return self.pozivmetode(objekt, parent)
         objekt = self.pročitaj(MJ.IME) # ne moramo raiseati grešku
         if self >> MJ.UOTV:
-            izraz = self.izraz()
+            izraz = self.izraz(parent)
             self.pročitaj(MJ.UZATV)
             return Indeksiranje(objekt, izraz)
         elif self >> MJ.TOČKA:
@@ -304,15 +304,17 @@ class MiniJavaParser(Parser):
             return self.pozivmetode(objekt)
         else: return objekt
 
-    def pozivmetode(self, objekt):
+    def pozivmetode(self, objekt, parent):
+        if objekt ^ MJ.THIS:
+               objekt = parent
         metoda = self.pročitaj(MJ.IME)
         self.pročitaj(MJ.OOTV)
         if self >> MJ.OZATV:
             argumenti = False
         else:
-            argumenti = [self.izraz()]
+            argumenti = [self.izraz(parent)]
             while self >> MJ.ZAREZ:
-                argumenti.append(self.izraz())
+                argumenti.append(self.izraz(parent))
         self.pročitaj(MJ.OZATV)
         return MethodCallExpression(objekt, metoda, argumenti)
 
@@ -343,13 +345,16 @@ class Program(AST('mainclass klase')):
 class MainClass(AST('ime arg naredbe')):
     def dekl(self, mem, symtab):
         for naredba in self.naredbe:
-            naredba.izvrši(mem, symtab, mem[self.ime.sadržaj])
+            lokalni = {}
+            lokalni[self.arg.sadržaj] = False
+            naredba.izvrši(mem, symtab, lokalni)
 
 class ClassDeclaration(AST('ime extends vardeklaracije metdeklaracije')):
     def dekl(self, mem, symtab):
         if self.extends:
             lokalni = mem[self.extends.ime.sadržaj] # nasljeđuje namespace klase roditelja
         else: lokalni = {}
+        lokalni[self.ime.sadržaj] = [True, 1]
         for vardekl in self.vardeklaracije:
             if vardekl.tip ^ MJ.ARRAY:
                 lokalni[vardekl.dekl(mem, symtab).sadržaj] = {} # dekl vraća ime
@@ -377,14 +382,14 @@ class MethodCallExpression(AST('objekt ime arg')): # poziv metode
         metoda = pogledaj(namespace, self.ime) # metoda (MethodDeclaration)
         namespace_metode = pogledaj(mem, metoda.ime) # lok. memorija
         for parametar, argument in zip(metoda.parametri, self.arg):
-            if (parametar.tip ^ argument.provjeri_tip(symtab)):
+            if (parametar.tip ^ argument.provjeri_tip(mem, symtab, lokalni)):
                namespace_metode[parametar.ime.sadržaj] = argument.vrijednost(mem, symtab, lokalni)
-            else: parametar.tip.krivi_tip(parametar.tip.tip, argument.provjeri_tip(symtab))
+            else: parametar.tip.krivi_tip(parametar.tip.tip, argument.provjeri_tip(mem, symtab, lokalni))
         for naredba in metoda.naredbe:
             naredba.izvrši(mem, symtab, namespace_metode)
-        if not metoda.returntip ^ metoda.returns.provjeri_tip(symtab):
-            metoda.returntip.krivi_tip(metoda.returntip.tip, metoda.returns.provjeri_tip(symtab))
-        return naredba.returns.vrijednost(mem, symtab, lokalni)
+        if not metoda.returntip ^ metoda.returns.provjeri_tip(mem, symtab, lokalni):
+            metoda.returntip.krivi_tip(metoda.returntip.tip, metoda.returns.provjeri_tip(mem, symtab, lokalni))
+        return metoda.returns.vrijednost(mem, symtab, namespace)
     
     def provjeri_tip(self, mem, symtab, lokalni):
         if isinstance(self.objekt, ConstructorExpression):
