@@ -6,7 +6,7 @@ class MJ(enum.Enum):
     NEG, MINUS, PLUS, PUTA, JEDNAKO, MANJE, TOČKA, TOČKAZ, ZAREZ = '!-+*=<.;,'
     AND = '&&'
     IF, ELSE, WHILE, RETURN, NEW, THIS, LENGTH = 'if', 'else', 'while', 'return', 'new', 'this', 'length'
-    CLASS, PUBLIC, STATIC, VOID, MAIN = 'class', 'public', 'static', 'void', 'main'
+    CLASS, PUBLIC, STATIC, VOID, MAIN, EXTENDS = 'class', 'public', 'static', 'void', 'main', 'extends'
     ARRAY = 'int[]'
 
     class BROJ(Token):
@@ -36,6 +36,9 @@ def minijava_lexer(program):
                     if lex.slijedi('/'):
                         lex.zanemari()
                         break
+        elif znak == '&':
+            lex.pročitaj('&')
+            yield lex.literal(MJ.AND)
         elif znak.isalpha():
             lex.zvijezda(identifikator)
             if lex.sadržaj in {'true', 'false'}: yield lex.token(MJ.LKONST)
@@ -135,7 +138,7 @@ class MiniJavaParser(Parser):
             imeroditelja = self.pročitaj(MJ.IME)
             self.pročitaj(MJ.OZATV)
         else:
-            extends = False
+            imeroditelja = False
         self.pročitaj(MJ.VOTV)
         vardeklaracije = []
         while not self >> {MJ.PUBLIC, MJ.VZATV}:
@@ -146,7 +149,7 @@ class MiniJavaParser(Parser):
         metdeklaracije = []
         while not self >> MJ.VZATV:
             metdeklaracije.append(self.methoddeclaration(ime))
-        return ClassDeclaration(ime, extends, vardeklaracije, metdeklaracije)
+        return ClassDeclaration(ime, imeroditelja, vardeklaracije, metdeklaracije)
 
     def vardeclaration(self):
         tip = self.tip()
@@ -165,16 +168,12 @@ class MiniJavaParser(Parser):
         else: parametri = False
         self.pročitaj(MJ.VOTV)
         vardeklaracije = []
-        while self >> {MJ.INT, MJ.BOOLEAN, MJ.IME}:
-            if self.zadnji ^ MJ.IME:
-                if self >> MJ.IME:
-                    if not self >> MJ.TOČKAZ:
-                        self.vrati()
-                        self.vrati()
-                        break;
-                    else:
-                        self.vrati()
-                        self.vrati()
+        while self >> {MJ.INT, MJ.BOOLEAN, MJ.IME, MJ.ARRAY}:
+            zadnji = self.zadnji
+            if zadnji ^ MJ.IME:
+                if zadnji.sadržaj not in self.klase:
+                    self.vrati()
+                    break
             self.vrati()
             vardeklaracije.append(self.vardeclaration())
         naredbe = []
@@ -262,11 +261,11 @@ class MiniJavaParser(Parser):
         return Dok(uvjet, naredba)
 
     def izraz(self, parent):
-        konjukti = [self.konjukt(parent)]
-        while self >> MJ.AND: konjukti.append(self.konjukt(parent))
-        return konjukti[0] if len(konjukti) == 1 else Konjukcija(konjukti)
+        konjunkti = [self.konjunkt(parent)]
+        while self >> MJ.AND: konjunkti.append(self.konjunkt(parent))
+        return konjunkti[0] if len(konjunkti) == 1 else Konjunkcija(konjunkti)
 
-    def konjukt(self, parent):
+    def konjunkt(self, parent):
         uspoređeni = [self.uspoređen(parent)]
         while self >> MJ.MANJE: uspoređeni.append(self.uspoređen(parent))
         return uspoređeni[0] if len(uspoređeni) == 1 else Usporedba(uspoređeni)
@@ -363,7 +362,7 @@ class MainClass(AST('ime arg naredbe')):
 class ClassDeclaration(AST('ime extends vardeklaracije metdeklaracije')):
     def dekl(self, mem, symtab):
         if self.extends:
-            lokalni = mem[self.extends.ime.sadržaj] # nasljeđuje namespace klase roditelja
+            lokalni = mem[self.extends.sadržaj] # nasljeđuje namespace klase roditelja
         else: lokalni = {}
         lokalni[self.ime.sadržaj] = [True, 1]
         for vardekl in self.vardeklaracije:
@@ -404,10 +403,10 @@ class MethodCallExpression(AST('objekt ime arg')): # poziv metode
     
     def provjeri_tip(self, mem, symtab, lokalni):
         if isinstance(self.objekt, ConstructorExpression):
-            ime = self.objekt.ime.sadržaj
-        else: ime = self.objekt.sadržaj
+            ime = self.objekt.ime
+        else: ime = self.objekt
         namespace = pogledaj(mem, ime) # namespace klase
-        metoda = pogledaj(namespace, self.ime.sadržaj)
+        metoda = pogledaj(namespace, self.ime)
         return metoda.returntip.tip
 
 class ConstructorExpression(AST('veličina ime')):
@@ -439,7 +438,7 @@ class Length(AST('varijabla')):
         return MJ.INT
 
 class VarDeclaration(AST('tip ime')):
-    def dekl(self, mem, symtab, lokalni):
+    def dekl(self, mem, symtab):
         if self.tip ^ MJ.IME:
             symtab[self.ime.sadržaj] = [self.tip.sadržaj, 1]
         else:
@@ -457,9 +456,9 @@ class MethodDeclaration(AST('returntip ime parametri vardeklaracije naredbe retu
                 symtab[parametar.ime.sadržaj] = [parametar.tip.tip, 1]
         for vardekl in self.vardeklaracije:
             if vardekl.tip ^ MJ.ARRAY:
-                metlokalni[vardekl.dekl(mem, symtab, lokalni).sadržaj] = {}
+                metlokalni[vardekl.dekl(mem, symtab).sadržaj] = {}
             else:
-                metlokalni[vardekl.dekl(mem, symtab, lokalni).sadržaj] = None
+                metlokalni[vardekl.dekl(mem, symtab).sadržaj] = None
         mem[self.ime.sadržaj] = metlokalni
 
 class Parametar(AST('tip ime')): pass # Ne trebamo nikakve metode?
@@ -487,9 +486,9 @@ class Pridruživanje(AST('varijabla indeks izraz')):
             if lokalni[self.varijabla.sadržaj] == {}:
                 symtab[self.varijabla.sadržaj][1] = self.izraz.veličina.sadržaj
 
-class Konjunkcija(AST('konjukti')):
+class Konjunkcija(AST('konjunkti')):
     def vrijednost(self, mem, symtab, lokalni):
-        return all(konjukt.vrijednost(mem, symtab, lokalni) for konjukt in self.konjukti)
+        return all(konjunkt.vrijednost(mem, symtab, lokalni) for konjunkt in self.konjunkti)
 
     def provjeri_tip(self, mem, symtab, lokalni):
         return MJ.BOOLEAN
@@ -601,7 +600,63 @@ class Fac {
 }
 '''
 
-tokeni = list(minijava_lexer(program_komentari))
+program2 = '''
+class Main{
+    public static void main(String[] a){
+        System.out.println(new Klasa().Metoda(5, 10));
+    }
+}
+class Klasa{
+    public int Metoda(int a, int b){
+        while (a < 10 && b < 13) {
+            if (a < 8)
+                a = a + 2;
+            else
+                a = a + 1;
+            b = b + 1;
+            System.out.println(a);                          
+        }
+        return b;
+    }
+}
+'''
+
+program_nasljeđivanje = '''
+class Main{
+    public static void main(String[] a){
+        System.out.println(new Dijete().DjetetovaMetoda(15));
+    }
+}
+
+class Roditelj{
+    int a;
+    int b;
+
+    public int RoditeljevaMetoda(int c){
+        if (c < 10) {
+            a = c;
+            b = c;
+        }
+        else {
+            a = c - 5;
+            b = c - 10;
+        }
+        return (a + b);
+    }
+}
+
+class Dijete (extends Roditelj){
+    int d;
+
+    public int DjetetovaMetoda(int d){
+        int e;
+        e = this.RoditeljevaMetoda(d + 3);
+        return e;
+    }
+}
+'''
+
+tokeni = list(minijava_lexer(program_nasljeđivanje))
 #print(*tokeni)
 
 ast = MiniJavaParser.parsiraj(tokeni)
