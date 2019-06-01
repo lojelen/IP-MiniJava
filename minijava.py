@@ -10,16 +10,17 @@ class MJ(enum.Enum):
     ARRAY = 'int[]'
 
     class BROJ(Token):
-        def vrijednost(self, mem, symtab, lokalni): return int(self.sadržaj)
-        def provjeri_tip(self, mem, symtab, lokalni): return MJ.INT
+        def vrijednost(self, mem, lokalni): return int(self.sadržaj)
+        def provjeri_tip(self, mem, lokalni): return MJ.INT
 
     class IME(Token):
-        def vrijednost(self, mem, symtab, lokalni): return pogledaj(lokalni, self)
-        def provjeri_tip(self, mem, symtab, lokalni): return pogledaj(symtab, self)[0]
+        def vrijednost(self, mem, lokalni): return pogledaj(lokalni, self)
+        def provjeri_tip(self, mem, lokalni):
+            return pogledaj(lokalni[0], self)[0]
 
     class LKONST(Token):
-        def vrijednost(self, mem, symtab, lokalni): return self.sadržaj == 'true'
-        def provjeri_tip(self, mem, symtab, lokalni): return MJ.BOOLEAN
+        def vrijednost(self, mem, lokalni): return self.sadržaj == 'true'
+        def provjeri_tip(self, mem, lokalni): return MJ.BOOLEAN
 
 def minijava_lexer(program):
     lex = Tokenizer(program)
@@ -86,10 +87,10 @@ def minijava_lexer(program):
 # faktor -> MINUS faktor | NEG faktor | postfix | primarni | grupa
 # postfix -> indeksiranje | pozivmetode | length
 # indeksiranje -> IME UOTV izraz UZATV
-# pozivmetode -> konstruktor TOČKA IME OOTV izrazi? OZATV | IME TOČKA IME OOTV izrazi? OZATV <-- Čitaj izraze u pozivmetode!
+# pozivmetode -> konstruktor TOČKA IME OOTV izrazi? OZATV | IME TOČKA IME OOTV izrazi? OZATV
 #               | THIS TOČKA IME OOTV izrazi? OZATV
 # Nije desno pravilo konstruktora!
-# length -> konstruktor TOČKA LENGTH | IME TOČKA LENGTH <--- vratiti se na ovo
+# length -> konstruktor TOČKA LENGTH | IME TOČKA LENGTH
 # grupa -> OOTV izraz OZATV
 # primarni -> BROJ | LKONST | THIS | konstruktor | IME
 # konstruktor -> NEW INT UOTV izraz UZATV | NEW IME OOTV OZATV
@@ -348,44 +349,50 @@ class Program(AST('mainclass klase')):
         symtab = {} # tablica tipova
         memorija[self.mainclass.ime.sadržaj] = [self.mainclass.arg.sadržaj]
         symtab[self.mainclass.arg.sadržaj] = [MJ.STRING, None] # vrijednosti u symtab su liste tipova + veličina
+
         for klasa in self.klase:
             memorija[klasa.ime.sadržaj] = [] # inicijaliziramo na prazno polje
-            klasa.dekl(memorija, symtab)
+            klasa.dekl(memorija)
         self.mainclass.dekl(memorija, symtab) # izvrši se main funkcija
 
 class MainClass(AST('ime arg naredbe')):
     def dekl(self, mem, symtab):
         for naredba in self.naredbe:
             lokalni = {}
+            lokalni[0] = symtab
             lokalni[self.arg.sadržaj] = False
-            naredba.izvrši(mem, symtab, lokalni)
+            naredba.izvrši(mem, lokalni)
 
 class ClassDeclaration(AST('ime extends vardeklaracije metdeklaracije')):
-    def dekl(self, mem, symtab):
+    def dekl(self, mem):
         if self.extends:
             lokalni = mem[self.extends.sadržaj].copy() # nasljeđuje namespace klase roditelja
-        else: lokalni = {}
+        else:
+            lokalni = {}
+            lokalni[0] = {}
         for ključ in lokalni:
             if isinstance(lokalni[ključ], MethodDeclaration):
                 mem[self.ime.sadržaj + ključ] = mem[self.extends.sadržaj + ključ]
         lokalni[self.ime.sadržaj] = [True, 1]
+        symtab = {}
         for vardekl in self.vardeklaracije:
             if vardekl.tip ^ MJ.ARRAY:
                 lokalni[vardekl.dekl(mem, symtab).sadržaj] = {}
             else:
                 lokalni[vardekl.dekl(mem, symtab).sadržaj] = None
+        lokalni[0].update(symtab)
         for metdekl in self.metdeklaracije:
             lokalni[metdekl.ime.sadržaj] = metdekl # spremamo sve metode u lokalnu memoriju
         for metdekl in self.metdeklaracije:
-            metdekl.dekl(mem, symtab, lokalni) # šaljemo lokalnu memoriju metodi
+            metdekl.dekl(mem, lokalni) # šaljemo lokalnu memoriju metode
         mem[self.ime.sadržaj] = lokalni
 
 class PrintStatement(AST('izraz')):
-    def izvrši(self, mem, symtab, lokalni):
-        print(self.izraz.vrijednost(mem, symtab, lokalni))
+    def izvrši(self, mem, lokalni):
+        print(self.izraz.vrijednost(mem, lokalni))
 
 class MethodCallExpression(AST('parent objekt ime arg')): # poziv metode
-    def vrijednost(self, mem, symtab, lokalni):
+    def vrijednost(self, mem, lokalni):
         if isinstance(self.objekt, ConstructorExpression):
             ime = self.objekt.ime
         else:
@@ -396,16 +403,16 @@ class MethodCallExpression(AST('parent objekt ime arg')): # poziv metode
         metoda = pogledaj(namespace, self.ime) # metoda (MethodDeclaration)
         namespace_metode = pogledaj(mem, Token(MJ.IME, ime.sadržaj + self.ime.sadržaj)) # lok. memorija
         for parametar, argument in zip(metoda.parametri, self.arg):
-            if (parametar.tip ^ argument.provjeri_tip(mem, symtab, lokalni)):
-               namespace_metode[parametar.ime.sadržaj] = argument.vrijednost(mem, symtab, lokalni)
-            else: parametar.tip.krivi_tip(parametar.tip.tip, argument.provjeri_tip(mem, symtab, lokalni))
+            if (parametar.tip ^ argument.provjeri_tip(mem, lokalni)):
+               namespace_metode[parametar.ime.sadržaj] = argument.vrijednost(mem, lokalni)
+            else: parametar.tip.krivi_tip(parametar.tip.tip, argument.provjeri_tip(mem, lokalni))
         for naredba in metoda.naredbe:
-            naredba.izvrši(mem, symtab, namespace_metode)
-        if not metoda.returntip ^ metoda.returns.provjeri_tip(mem, symtab, lokalni):
-            metoda.returntip.krivi_tip(metoda.returntip.tip, metoda.returns.provjeri_tip(mem, symtab, lokalni))
-        return metoda.returns.vrijednost(mem, symtab, namespace_metode)
+            naredba.izvrši(mem, namespace_metode)
+        if not metoda.returntip ^ metoda.returns.provjeri_tip(mem, namespace_metode):
+            metoda.returntip.krivi_tip(metoda.returntip.tip, metoda.returns.provjeri_tip(mem, namespace_metode))
+        return metoda.returns.vrijednost(mem, namespace_metode)
     
-    def provjeri_tip(self, mem, symtab, lokalni):
+    def provjeri_tip(self, mem, lokalni):
         if isinstance(self.objekt, ConstructorExpression):
             ime = self.objekt.ime
         else: ime = self.objekt
@@ -414,30 +421,30 @@ class MethodCallExpression(AST('parent objekt ime arg')): # poziv metode
         return metoda.returntip.tip
 
 class ConstructorExpression(AST('veličina ime')):
-    def vrijednost(self, mem, symtab, lokalni):
+    def vrijednost(self, mem, lokalni):
         if (self.ime == False):
             return {}
         else:
             return True
 
-    def provjeri_tip(self, mem, symtab, lokalni):
+    def provjeri_tip(self, mem, lokalni):
         if (self.ime == False):
             return MJ.ARRAY
         else:
             return ime.sadržaj
 
 class Indeksiranje(AST('varijabla veličina')):
-    def vrijednost(self, mem, symtab, lokalni):
-        return pogledaj(lokalni, self.varijabla)[str(self.veličina.vrijednost(mem, symtab, lokalni))]
+    def vrijednost(self, mem, lokalni):
+        return pogledaj(lokalni, self.varijabla)[str(self.veličina.vrijednost(mem, lokalni))]
 
-    def provjeri_tip(self, mem, symtab, lokalni):
+    def provjeri_tip(self, mem, lokalni):
         return MJ.INT
 
 class Length(AST('varijabla')):
-    def vrijednost(self, mem, symtab, lokalni):
-        return pogledaj(symtab, self.varijabla)[1]
+    def vrijednost(self, mem, lokalni):
+        return pogledaj(lokalni[0], self.varijabla)[1]
 
-    def provjeri_tip(self, mem, symtab, lokalni):
+    def provjeri_tip(self, mem, lokalni):
         return MJ.INT
 
 class VarDeclaration(AST('tip ime')):
@@ -450,96 +457,98 @@ class VarDeclaration(AST('tip ime')):
 
 # deklaracija metode
 class MethodDeclaration(AST('parent returntip ime parametri vardeklaracije naredbe returns')):
-    def dekl(self, mem, symtab, lokalni): # lokalni je lokalna memorija klase
+    def dekl(self, mem, lokalni): # lokalni je lokalna memorija klase
         metlokalni = lokalni.copy()
         for parametar in self.parametri:
             if parametar.tip ^ MJ.IME:
-                symtab[parametar.ime.sadržaj] = [parametar.tip.sadržaj, 1]
+                metlokalni[0][parametar.ime.sadržaj] = [parametar.tip.sadržaj, 1]
             else:
-                symtab[parametar.ime.sadržaj] = [parametar.tip.tip, 1]
+                metlokalni[0][parametar.ime.sadržaj] = [parametar.tip.tip, 1]
+        symtab = {}
         for vardekl in self.vardeklaracije:
             if vardekl.tip ^ MJ.ARRAY:
                 metlokalni[vardekl.dekl(mem, symtab).sadržaj] = {}
             else:
                 metlokalni[vardekl.dekl(mem, symtab).sadržaj] = None
+        metlokalni[0].update(symtab)
         mem[self.parent.sadržaj + self.ime.sadržaj] = metlokalni
 
 class Parametar(AST('tip ime')): pass #
 
 class Ako(AST('uvjet naredba inače')):
-    def izvrši(self, mem, symtab, lokalni):
-        if self.uvjet.vrijednost(mem, symtab, lokalni): self.naredba.izvrši(mem, symtab, lokalni) 
-        else: self.inače.izvrši(mem, symtab, lokalni)
+    def izvrši(self, mem, lokalni):
+        if self.uvjet.vrijednost(mem, lokalni): self.naredba.izvrši(mem, lokalni) 
+        else: self.inače.izvrši(mem, lokalni)
 
 class Dok(AST('uvjet naredba')):
-    def izvrši(self, mem, symtab, lokalni):
-        while self.uvjet.vrijednost(mem, symtab, lokalni): self.naredba.izvrši(mem, symtab, lokalni)
+    def izvrši(self, mem, lokalni):
+        while self.uvjet.vrijednost(mem, lokalni): self.naredba.izvrši(mem, lokalni)
 
 class Pridruživanje(AST('varijabla indeks izraz')):
-    def izvrši(self, mem, symtab, lokalni):
+    def izvrši(self, mem, lokalni):
         if self.indeks:
-            if not self.izraz.provjeri_tip(mem, symtab, lokalni) == MJ.INT:
-                Token(self.izraz.provjeri_tip(mem, symtab, lokalni), '').krivi_tip(self.izraz.provjeri_tip(mem, symtab, lokalni), MJ.INT)
-            lokalni[self.varijabla.sadržaj][self.indeks.sadržaj] = self.izraz.vrijednost(mem, symtab, lokalni)
+            if not self.izraz.provjeri_tip(mem, lokalni) == MJ.INT:
+                Token(self.izraz.provjeri_tip(mem, lokalni), '').krivi_tip(self.izraz.provjeri_tip(mem, lokalni), MJ.INT)
+            lokalni[self.varijabla.sadržaj][self.indeks.sadržaj] = self.izraz.vrijednost(mem, lokalni)
         else:
-            if not pogledaj(symtab, self.varijabla)[0] == self.izraz.provjeri_tip(mem, symtab, lokalni):
-                Token(pogledaj(symtab, self.varijabla)[0],
-                      '').krivi_tip(pogledaj(symtab, self.varijabla)[0], self.izraz.provjeri_tip(mem, symtab, lokalni))
-            lokalni[self.varijabla.sadržaj] = self.izraz.vrijednost(mem, symtab, lokalni)
+            if not pogledaj(lokalni[0], self.varijabla)[0] == self.izraz.provjeri_tip(mem, lokalni):
+                Token(pogledaj(lokalni[0], self.varijabla)[0],
+                      '').krivi_tip(pogledaj(lokalni[0], self.varijabla)[0], self.izraz.provjeri_tip(mem, lokalni))
+            lokalni[self.varijabla.sadržaj] = self.izraz.vrijednost(mem, lokalni)
             if lokalni[self.varijabla.sadržaj] == {}:
-                symtab[self.varijabla.sadržaj][1] = self.izraz.veličina.sadržaj
+                lokalni[0][self.varijabla.sadržaj][1] = self.izraz.veličina.sadržaj
 
 class Konjunkcija(AST('konjunkti')):
-    def vrijednost(self, mem, symtab, lokalni):
-        return all(konjunkt.vrijednost(mem, symtab, lokalni) for konjunkt in self.konjunkti)
+    def vrijednost(self, mem, lokalni):
+        return all(konjunkt.vrijednost(mem, lokalni) for konjunkt in self.konjunkti)
 
-    def provjeri_tip(self, mem, symtab, lokalni):
+    def provjeri_tip(self, mem, lokalni):
         return MJ.BOOLEAN
 
 class Usporedba(AST('uspoređeni')):
-    def vrijednost(self, mem, symtab, lokalni):
+    def vrijednost(self, mem, lokalni):
         l, d, *rest = self.uspoređeni
-        vr = l.vrijednost(mem, symtab, lokalni) < d.vrijednost(mem, symtab, lokalni)
+        vr = l.vrijednost(mem, lokalni) < d.vrijednost(mem, lokalni)
         for uspoređen in rest :
-            vr = vr < uspoređen.vrijednost(mem, symtab, lokalni)
+            vr = vr < uspoređen.vrijednost(mem, lokalni)
         return vr
 
-    def provjeri_tip(self, mem, symtab, lokalni):
+    def provjeri_tip(self, mem, lokalni):
         return MJ.BOOLEAN
 
 class Zbroj(AST('članovi')):
-    def vrijednost(self, mem, symtab, lokalni):
-        return sum(član.vrijednost(mem, symtab, lokalni) for član in self.članovi)
+    def vrijednost(self, mem, lokalni):
+        return sum(član.vrijednost(mem, lokalni) for član in self.članovi)
 
-    def provjeri_tip(self, mem, symtab, lokalni):
+    def provjeri_tip(self, mem, lokalni):
         return MJ.INT
 
 class Umnožak(AST('faktori')):
-    def vrijednost(self, mem, symtab, lokalni):
+    def vrijednost(self, mem, lokalni):
         f = 1
-        for faktor in self.faktori: f *= faktor.vrijednost(mem, symtab, lokalni)
+        for faktor in self.faktori: f *= faktor.vrijednost(mem, lokalni)
         return f
 
-    def provjeri_tip(self, mem, symtab, lokalni):
+    def provjeri_tip(self, mem, lokalni):
         return MJ.INT
 
 class Suprotan(AST('dolje')):
-    def vrijednost(self, mem, symtab, lokalni):
-        return -self.dolje.vrijednost(mem, symtab, lokalni)
+    def vrijednost(self, mem, lokalni):
+        return -self.dolje.vrijednost(mem, lokalni)
 
-    def provjeri_tip(self, mem, symtab, lokalni):
+    def provjeri_tip(self, mem, lokalni):
         return MJ.INT
 
 class Negacija(AST('dolje')):
-    def vrijednost(self, mem, symtab, lokalni):
-        return not(self.dolje.vrijednost(mem, symtab, lokalni))
+    def vrijednost(self, mem, lokalni):
+        return not(self.dolje.vrijednost(mem, lokalni))
 
-    def provjeri_tip(self, mem, symtab, lokalni):
+    def provjeri_tip(self, mem, lokalni):
         return MJ.BOOLEAN
 
 class Blok(AST('naredbe')):
-    def izvrši(self, mem, symtab, lokalni):
-        for naredba in self.naredbe: naredba.izvrši(mem, symtab, lokalni)
+    def izvrši(self, mem, lokalni):
+        for naredba in self.naredbe: naredba.izvrši(mem, lokalni)
 
 ### Apstraktna sintaksna stabla:
 # Program(MainClass klase) (klase: lista ClassDeclaration)
@@ -720,7 +729,7 @@ class Dijete (extends Roditelj){
 }
 '''
 
-tokeni = list(minijava_lexer(program_nasljeđivanje2))
+tokeni = list(minijava_lexer(program))
 #print(*tokeni)
 
 ast = MiniJavaParser.parsiraj(tokeni)
