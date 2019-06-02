@@ -402,6 +402,8 @@ class MethodCallExpression(AST('parent objekt ime arg')): # poziv metode
         namespace = pogledaj(mem, ime) # namespace klase
         metoda = pogledaj(namespace, self.ime) # metoda (MethodDeclaration)
         namespace_metode = pogledaj(mem, Token(MJ.IME, ime.sadržaj + self.ime.sadržaj)) # lok. memorija
+        if len(metoda.parametri) != len(self.arg):
+            raise GreškaIzvođenja("Broj argumenta je različit od broja parametra metode.")
         for parametar, argument in zip(metoda.parametri, self.arg):
             if (parametar.tip ^ argument.provjeri_tip(mem, lokalni)):
                namespace_metode[parametar.ime.sadržaj] = argument.vrijednost(mem, lokalni)
@@ -502,6 +504,8 @@ class Pridruživanje(AST('varijabla indeks izraz')):
             lokalni[self.varijabla.sadržaj] = self.izraz.vrijednost(mem, lokalni)
             if lokalni[self.varijabla.sadržaj] == {}:
                 lokalni[0][self.varijabla.sadržaj][1] = self.izraz.veličina.sadržaj
+                for i in range(int(self.izraz.veličina.sadržaj)):
+                    lokalni[self.varijabla.sadržaj][str(i)] = 0
 
 class Konjunkcija(AST('konjunkti')):
     def vrijednost(self, mem, lokalni):
@@ -708,7 +712,7 @@ class Dijete (extends Roditelj){
         return f;
     }
 }
-'''
+''' #treba grešku javiti vezanu uz tipove
 
 program4 = '''
 class Main{
@@ -782,12 +786,27 @@ class Main{
 class Klasa{
     int[] a;
     public int Metoda(int x){
-        //a[0] = x; //kada se otkomentira javi se greška jer je izvan granica polja
-        System.out.println(a.length);
-        return 0;
+        a = new int[1];
+        //a[1] = x; //kada se otkomentira javi se greška jer je izvan granica polja
+        System.out.println(a[0]);
+        return x+a[0];
     }
 }
 '''
+
+program_krivi_broj_parametra = '''
+class Main{
+    public static void main(String[] a){
+        System.out.println(new Klasa().Metoda(12));
+    }
+}
+
+class Klasa{
+    public int Metoda(int x, int b){
+        return x;
+    }
+}
+''' #treba grešku javiti vezanu uz broj parametra
 
 tokeni = list(minijava_lexer(program))
 #print(*tokeni)
