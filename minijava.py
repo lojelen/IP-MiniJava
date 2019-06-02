@@ -405,11 +405,11 @@ class MethodCallExpression(AST('parent objekt ime arg')): # poziv metode
         for parametar, argument in zip(metoda.parametri, self.arg):
             if (parametar.tip ^ argument.provjeri_tip(mem, lokalni)):
                namespace_metode[parametar.ime.sadržaj] = argument.vrijednost(mem, lokalni)
-            else: parametar.tip.krivi_tip(parametar.tip.tip, argument.provjeri_tip(mem, lokalni))
+            else: raise parametar.tip.krivi_tip(parametar.tip.tip, argument.provjeri_tip(mem, lokalni))
         for naredba in metoda.naredbe:
             naredba.izvrši(mem, namespace_metode)
         if not metoda.returntip ^ metoda.returns.provjeri_tip(mem, namespace_metode):
-            metoda.returntip.krivi_tip(metoda.returntip.tip, metoda.returns.provjeri_tip(mem, namespace_metode))
+            raise (metoda.returntip).krivi_tip(metoda.returntip.tip, metoda.returns.provjeri_tip(mem, namespace_metode))
         return metoda.returns.vrijednost(mem, namespace_metode)
     
     def provjeri_tip(self, mem, lokalni):
@@ -488,11 +488,11 @@ class Pridruživanje(AST('varijabla indeks izraz')):
     def izvrši(self, mem, lokalni):
         if self.indeks:
             if not self.izraz.provjeri_tip(mem, lokalni) == MJ.INT:
-                Token(self.izraz.provjeri_tip(mem, lokalni), '').krivi_tip(self.izraz.provjeri_tip(mem, lokalni), MJ.INT)
+                raise Token(self.izraz.provjeri_tip(mem, lokalni), '').krivi_tip(self.izraz.provjeri_tip(mem, lokalni), MJ.INT)
             lokalni[self.varijabla.sadržaj][self.indeks.sadržaj] = self.izraz.vrijednost(mem, lokalni)
         else:
             if not pogledaj(lokalni[0], self.varijabla)[0] == self.izraz.provjeri_tip(mem, lokalni):
-                Token(pogledaj(lokalni[0], self.varijabla)[0],
+                raise Token(pogledaj(lokalni[0], self.varijabla)[0],
                       '').krivi_tip(pogledaj(lokalni[0], self.varijabla)[0], self.izraz.provjeri_tip(mem, lokalni))
             lokalni[self.varijabla.sadržaj] = self.izraz.vrijednost(mem, lokalni)
             if lokalni[self.varijabla.sadržaj] == {}:
@@ -667,6 +667,43 @@ class Dijete (extends Roditelj){
 }
 '''
 
+program_nasljeđivanje_krivi_tipovi = '''
+class Main{
+    public static void main(String[] a){
+        System.out.println(new Dijete().DjetetovaMetoda(15));
+    }
+}
+
+class Roditelj{
+    int a;
+    int b;
+
+    public int RoditeljevaMetoda(int c){
+        if (c < 10) {
+            a = c;
+            b = c;
+        }
+        else {
+            a = c - 5;
+            b = c - 10;
+        }
+        return (a + b);
+    }
+}
+
+class Dijete (extends Roditelj){
+    int d;
+
+    public int DjetetovaMetoda(int d){
+        int e;
+        int[] f;
+        e = this.RoditeljevaMetoda(d + 3);
+        f[0] = e;
+        return f;
+    }
+}
+'''
+
 program4 = '''
 class Main{
     public static void main(String[] a){
@@ -729,7 +766,7 @@ class Dijete (extends Roditelj){
 }
 '''
 
-tokeni = list(minijava_lexer(program))
+tokeni = list(minijava_lexer(program_nasljeđivanje_krivi_tipovi))
 #print(*tokeni)
 
 ast = MiniJavaParser.parsiraj(tokeni)
