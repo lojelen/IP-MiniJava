@@ -285,8 +285,8 @@ class MiniJavaParser(Parser):
         return faktori[0] if len(faktori) == 1 else Umnožak(faktori)
 
     def faktor(self, parent):
-        if self >> MJ.MINUS: return Suprotan(self.faktor())
-        elif self >> MJ.NEG: return Negacija(self.faktor())
+        if self >> MJ.MINUS: return Suprotan(self.faktor(parent))
+        elif self >> MJ.NEG: return Negacija(self.faktor(parent))
         elif self >> MJ.OOTV:
             u_zagradi = self.izraz(parent)
             self.pročitaj(MJ.OZATV)
@@ -481,11 +481,15 @@ class Parametar(AST('tip ime')): pass #
 
 class Ako(AST('uvjet naredba inače')):
     def izvrši(self, mem, lokalni):
+        if not self.uvjet.provjeri_tip(mem, lokalni) == MJ.BOOLEAN:
+            raise Token(self.uvjet.provjeri_tip(mem, lokalni),'').krivi_tip(self.uvjet.provjeri_tip(mem, lokalni),MJ.BOOLEAN)
         if self.uvjet.vrijednost(mem, lokalni): self.naredba.izvrši(mem, lokalni) 
         else: self.inače.izvrši(mem, lokalni)
 
 class Dok(AST('uvjet naredba')):
     def izvrši(self, mem, lokalni):
+        if not self.uvjet.provjeri_tip(mem, lokalni) == MJ.BOOLEAN:
+            raise Token(self.uvjet.provjeri_tip(mem, lokalni),'').krivi_tip(self.uvjet.provjeri_tip(mem, lokalni),MJ.BOOLEAN)
         while self.uvjet.vrijednost(mem, lokalni): self.naredba.izvrši(mem, lokalni)
 
 class Pridruživanje(AST('varijabla indeks izraz')):
@@ -509,6 +513,9 @@ class Pridruživanje(AST('varijabla indeks izraz')):
 
 class Konjunkcija(AST('konjunkti')):
     def vrijednost(self, mem, lokalni):
+        for konjunkt in self.konjunkti:
+            if  not konjunkt.provjeri_tip(mem, lokalni) == MJ.BOOLEAN:
+                raise Token(konjunkt.provjeri_tip(mem, lokalni),'').krivi_tip(konjunkt.provjeri_tip(mem, lokalni),MJ.BOOLEAN)
         return all(konjunkt.vrijednost(mem, lokalni) for konjunkt in self.konjunkti)
 
     def provjeri_tip(self, mem, lokalni):
@@ -516,6 +523,9 @@ class Konjunkcija(AST('konjunkti')):
 
 class Usporedba(AST('uspoređeni')):
     def vrijednost(self, mem, lokalni):
+        for uspoređen in self.uspoređeni:
+            if  not uspoređen.provjeri_tip(mem, lokalni) == MJ.INT:
+                raise Token(uspoređen.provjeri_tip(mem, lokalni),'').krivi_tip(uspoređen.provjeri_tip(mem, lokalni),MJ.INT)
         l, d, *rest = self.uspoređeni
         vr = l.vrijednost(mem, lokalni) < d.vrijednost(mem, lokalni)
         for uspoređen in rest :
@@ -527,6 +537,9 @@ class Usporedba(AST('uspoređeni')):
 
 class Zbroj(AST('članovi')):
     def vrijednost(self, mem, lokalni):
+        for član in self.članovi:
+            if  not član.provjeri_tip(mem, lokalni) == MJ.INT:
+                raise Token(član.provjeri_tip(mem, lokalni),'').krivi_tip(član.provjeri_tip(mem, lokalni),MJ.INT)
         return sum(član.vrijednost(mem, lokalni) for član in self.članovi)
 
     def provjeri_tip(self, mem, lokalni):
@@ -534,6 +547,9 @@ class Zbroj(AST('članovi')):
 
 class Umnožak(AST('faktori')):
     def vrijednost(self, mem, lokalni):
+        for faktor in self.faktori:
+            if not faktor.provjeri_tip(mem, lokalni) == MJ.INT:
+                raise Token(faktor.provjeri_tip(mem, lokalni),'').krivi_tip(faktor.provjeri_tip(mem, lokalni),MJ.INT)
         f = 1
         for faktor in self.faktori: f *= faktor.vrijednost(mem, lokalni)
         return f
@@ -543,6 +559,8 @@ class Umnožak(AST('faktori')):
 
 class Suprotan(AST('dolje')):
     def vrijednost(self, mem, lokalni):
+        if not self.dolje.provjeri_tip(mem, lokalni) == MJ.INT:
+            raise Token(self.dolje.provjeri_tip(mem, lokalni),'').krivi_tip(self.dolje.provjeri_tip(mem, lokalni),MJ.INT)
         return -self.dolje.vrijednost(mem, lokalni)
 
     def provjeri_tip(self, mem, lokalni):
@@ -550,6 +568,8 @@ class Suprotan(AST('dolje')):
 
 class Negacija(AST('dolje')):
     def vrijednost(self, mem, lokalni):
+        if not self.dolje.provjeri_tip(mem, lokalni) == MJ.BOOLEAN:
+            raise Token(self.dolje.provjeri_tip(mem, lokalni),'').krivi_tip(self.dolje.provjeri_tip(mem, lokalni),MJ.BOOLEAN)
         return not(self.dolje.vrijednost(mem, lokalni))
 
     def provjeri_tip(self, mem, lokalni):
@@ -807,6 +827,25 @@ class Klasa{
     }
 }
 ''' #treba grešku javiti vezanu uz broj parametra
+
+program_krivi_tipovi_na_operacijama = '''
+class Main{
+    public static void main(String[] a){
+        System.out.println(new Klasa().Metoda(15,11));
+    }
+}
+
+class Klasa{
+    public int Metoda(int x, int b){
+        int a;
+        if(7)
+            a = x;
+        else
+            a = true+false;
+        return a;
+    }
+}
+''' #treba grešku javiti vezanu uz tip, ako ispravimo izraz u if-u u boolean onda ima dolje još jedna greška
 
 tokeni = list(minijava_lexer(program))
 #print(*tokeni)
