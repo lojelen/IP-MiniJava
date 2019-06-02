@@ -451,6 +451,8 @@ class VarDeclaration(AST('tip ime')):
     def dekl(self, mem, symtab):
         if self.tip ^ MJ.IME:
             symtab[self.ime.sadržaj] = [self.tip.sadržaj, 1]
+        elif self.tip ^ MJ.ARRAY:
+            symtab[self.ime.sadržaj] = [self.tip.tip, 0]
         else:
             symtab[self.ime.sadržaj] = [self.tip.tip, 1]
         return self.ime
@@ -489,7 +491,10 @@ class Pridruživanje(AST('varijabla indeks izraz')):
         if self.indeks:
             if not self.izraz.provjeri_tip(mem, lokalni) == MJ.INT:
                 raise Token(self.izraz.provjeri_tip(mem, lokalni), '').krivi_tip(self.izraz.provjeri_tip(mem, lokalni), MJ.INT)
-            lokalni[self.varijabla.sadržaj][self.indeks.sadržaj] = self.izraz.vrijednost(mem, lokalni)
+            if int(self.indeks.sadržaj) < int(pogledaj(lokalni[0], self.varijabla)[1]) and int(self.indeks.sadržaj) >= 0:
+                lokalni[self.varijabla.sadržaj][self.indeks.sadržaj] = self.izraz.vrijednost(mem, lokalni)
+            else:
+                raise GreškaIzvođenja("Indeks polja je izvan granica.")
         else:
             if not pogledaj(lokalni[0], self.varijabla)[0] == self.izraz.provjeri_tip(mem, lokalni):
                 raise Token(pogledaj(lokalni[0], self.varijabla)[0],
@@ -697,6 +702,7 @@ class Dijete (extends Roditelj){
     public int DjetetovaMetoda(int d){
         int e;
         int[] f;
+        f = new int[1];
         e = this.RoditeljevaMetoda(d + 3);
         f[0] = e;
         return f;
@@ -766,7 +772,24 @@ class Dijete (extends Roditelj){
 }
 '''
 
-tokeni = list(minijava_lexer(program_nasljeđivanje_krivi_tipovi))
+program_indeksiranje = '''
+class Main{
+    public static void main(String[] a){
+        System.out.println(new Klasa().Metoda(15));
+    }
+}
+
+class Klasa{
+    int[] a;
+    public int Metoda(int x){
+        //a[0] = x; //kada se otkomentira javi se greška jer je izvan granica polja
+        System.out.println(a.length);
+        return 0;
+    }
+}
+'''
+
+tokeni = list(minijava_lexer(program))
 #print(*tokeni)
 
 ast = MiniJavaParser.parsiraj(tokeni)
