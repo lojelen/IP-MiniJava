@@ -403,7 +403,7 @@ class MethodCallExpression(AST('parent objekt ime arg')): # poziv metode
         metoda = pogledaj(namespace, self.ime) # metoda (MethodDeclaration)
         namespace_metode = pogledaj(mem, Token(MJ.IME, ime.sadržaj + self.ime.sadržaj)) # lok. memorija
         if len(metoda.parametri) != len(self.arg):
-            raise GreškaIzvođenja("Broj argumenta je različit od broja parametra metode.")
+            raise SemantičkaGreška("Broj argumenta je različit od broja parametra metode.")
         for parametar, argument in zip(metoda.parametri, self.arg):
             if (parametar.tip ^ argument.provjeri_tip(mem, lokalni)):
                namespace_metode[parametar.ime.sadržaj] = argument.vrijednost(mem, lokalni)
@@ -500,7 +500,7 @@ class Pridruživanje(AST('varijabla indeks izraz')):
             if int(self.indeks.sadržaj) < int(pogledaj(lokalni[0], self.varijabla)[1]) and int(self.indeks.sadržaj) >= 0:
                 lokalni[self.varijabla.sadržaj][self.indeks.sadržaj] = self.izraz.vrijednost(mem, lokalni)
             else:
-                raise GreškaIzvođenja("Indeks polja je izvan granica.")
+                raise SemantičkaGreška("Indeks polja je izvan granica.")
         else:
             if not pogledaj(lokalni[0], self.varijabla)[0] == self.izraz.provjeri_tip(mem, lokalni):
                 raise Token(pogledaj(lokalni[0], self.varijabla)[0],
@@ -814,7 +814,7 @@ class Klasa{
 }
 '''
 
-program_krivi_broj_parametra = '''
+program_krivi_broj_parametara = '''
 class Main{
     public static void main(String[] a){
         System.out.println(new Klasa().Metoda(12));
